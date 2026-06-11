@@ -1,7 +1,7 @@
 """Central configuration for the sequential recommender project."""
 from dataclasses import dataclass, field
 from typing import List
-
+import torch
 
 @dataclass
 class Config:
@@ -26,7 +26,7 @@ class Config:
     weight_decay: float = 0.0
     patience: int = 3           # early stopping on val NDCG@10
     seed: int = 42
-    import torch
+
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
     # set to "cuda" if available
 
