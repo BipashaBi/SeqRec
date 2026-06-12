@@ -1,56 +1,60 @@
 # Sequential Product Recommender
 
-**Next-item recommendation** — predicting what a user will view or buy next from
-their session history. The engine behind *"customers who viewed this went on to
-view…"*.
+**Predicting what a user will look at next** — the idea behind
+*"customers who viewed this also viewed…"*.
 
-- **The task:** given a user's session so far, predict the next item they'll interact with.
-- **The approach:** benchmark a neural sequence model (GRU4Rec) against three classical baselines under one clean, leakage-free protocol.
-- **The question:** does the neural model's added complexity pay off — and exactly where?
+This project asks one simple question: to guess your next click, do you really
+need a fancy neural network, or is a simple method just as good? It compares
+four methods — three simple, one neural — fairly, on the same data, and reports
+who wins and *why*.
 
 ## TL;DR
 
-- A fair **baseline-vs-model comparison** for next-item recommendation — four methods, identical split, identical metrics.
-- On real e-commerce data (RetailRocket: 45K items, 2.7M interactions), GRU4Rec reaches **Recall@10 ≈ 0.50, NDCG@10 ≈ 0.38** (converged after 30 epochs), with no train/test gap.
-- The point isn't "the neural net won" — it's a rigorous table plus a clear explanation of *why* the numbers land where they do.
+- Compares a neural network (**GRU4Rec**) against three simpler methods at predicting a user's next item.
+- **The finding:** on real shopping data, the *simplest* method — basically a "what usually comes next" counter — **beats the neural network**. Your next click is mostly decided by the one item right before it, so the neural net's extra power isn't needed.
+- On made-up data with deliberately hidden deeper patterns, the neural net wins instead. **Lesson: a complex model is only worth it when the data actually has complex patterns.**
 
-## Methods compared
+## The four methods
 
-| Method      | Idea                                                      | Captures            |
-|-------------|-----------------------------------------------------------|---------------------|
-| Popularity  | Recommend globally frequent items, ignore order           | nothing sequential  |
-| Markov(1)   | `P(next \| last item)` from transition counts             | first-order order   |
-| ItemKNN     | Co-occurrence within sessions, scored over recent context | item affinity       |
-| GRU4Rec     | Embedding → GRU → softmax over items, next-item CE loss    | longer-range memory |
+| Method | What it does (in plain words) | How far back it looks |
+|--------|-------------------------------|-----------------------|
+| Popularity | Always suggests the most popular items, ignoring you | nothing |
+| Markov(1)  | Suggests what usually comes right after your **last** item | 1 step |
+| ItemKNN    | Suggests items that often show up alongside your recent ones | a few recent items |
+| GRU4Rec    | A neural network that learns patterns across your **whole** session | whole session |
 
-- All four methods use the **same split, same metrics, and same ranking** — that's what makes the comparison fair and the table meaningful.
+All four are tested the exact same way, so the comparison is fair.
 
-## Results on RetailRocket (real data)
+## Results on real data (RetailRocket — a real online store's click logs)
 
-Leave-one-out test set, evaluated on a 5,000-instance sample.
+**How to read the scores** (higher is better, the most is 1.0):
+
+- **Recall@10** — how often the correct next item is somewhere in the top 10 suggestions.
+- **NDCG@10** — same idea, but gives more credit for putting the right item *near the top*.
+- **MRR** — on average, how near the top of the list the right item lands.
 
 | Method     | Recall@10  | NDCG@10    | MRR        |
 |------------|------------|------------|------------|
-| Popularity | _pending_  | _pending_  | _pending_  |
-| Markov(1)  | _pending_  | _pending_  | _pending_  |
-| ItemKNN    | _pending_  | _pending_  | _pending_  |
-| GRU4Rec    | **0.4992** | **0.3789** | **0.3461** |
+| Popularity | 0.0082     | 0.0038     | 0.0041     |
+| **Markov(1)** | **0.7568** | **0.5042** | **0.4372** |
+| ItemKNN    | 0.3276     | 0.1765     | 0.1461     |
+| GRU4Rec    | 0.4992     | 0.3789     | 0.3461     |
 
-> **TODO before sharing:** fill the three baseline rows by running
-> `python train.py --data retailrocket --path events.csv`, then add one line of
-> interpretation — where GRU4Rec's gain comes from, or (if the baselines stay
-> close) that finding, stated plainly. A complete table is what makes this land.
+**The simplest method wins:**
 
-## Validation on synthetic data (controlled benchmark)
+- **Markov(1) beats the neural network** by a wide margin. On this data, your next click is mostly decided by the single item you just looked at — so simply counting "what usually comes next" works best.
+- **Popularity scores almost zero.** Suggesting generic popular items almost never matches what someone actually clicks next — the signal is personal, not generic.
+- **Honest takeaway:** the neural network's ability to remember long histories doesn't help when the answer is just one step away. This is a well-known result in the field, not a mistake — and showing it is the point.
 
-The comparison is first validated on synthetic data with three *known* signals,
-so each model can be checked against what it should and shouldn't capture:
+## Why test on made-up data too?
 
-- **Popularity noise** — globally frequent items, no order.
-- **Lag-1 dependency** — next item depends on the last item (a first-order model can see this).
-- **Lag-2 dependency** — next item depends on the item *two steps back* (only a model with memory can see this).
+To prove the setup is correct, the same methods are run on data with three
+patterns deliberately planted, so each method can be checked against what it
+*should* be able to find:
 
-Leave-one-out test set, `python train.py`:
+- **Popular items** — some items simply appear a lot.
+- **1-step pattern** — the next item depends on the last item.
+- **2-step pattern** — the next item depends on the item *two back* (a simple method can't see this; a neural net can).
 
 | Method     | Recall@10 | NDCG@10   | MRR       |
 |------------|-----------|-----------|-----------|
@@ -59,68 +63,60 @@ Leave-one-out test set, `python train.py`:
 | ItemKNN    | 0.603     | 0.292     | 0.213     |
 | GRU4Rec    | **0.783** | **0.629** | **0.580** |
 
-- **Markov(1) is a strong baseline** — it nails the lag-1 term.
-- **GRU4Rec's margin over Markov is exactly the lag-2 structure** that only a memory-based model can use.
-- **Takeaway:** the controlled experiment proves the *mechanism*; the RetailRocket table shows it holds on real data.
+- Here the **neural network wins** — because there's a 2-step pattern only it can catch.
+- **This contrast is the whole point:** the neural net wins when there are deeper patterns to find, and loses to a simple method when there aren't. Match the model to the data — complexity should earn its place.
 
-## Evaluation protocol
+## How it's tested (fairly)
 
-Standard **leave-one-out** for next-item recommendation. For each user sequence
-`[i1 … i_{n-1}, i_n]`:
-
-- **test** — input `[i1 … i_{n-1}]`, target `i_n`
-- **val** — input `[i1 … i_{n-2}]`, target `i_{n-1}`
-- **train** — next-item pairs from `[i1 … i_{n-2}]` only
-
-- **No leakage:** val/test targets are never used as training labels.
-- **Metrics:** Recall@K, NDCG@K, and MRR, ranking the true next item against the catalog.
-- **Scale:** on large catalogs the eval set is sampled for speed.
+- For each user, we **hide their last action** and check whether the model predicts it, using only their earlier history.
+- Nothing from the test is used during training, so there's **no cheating** and the scores are honest.
+- Each score is measured by ranking the correct item against the full catalog.
 
 ## Quick start
 
 ```bash
 pip install -r requirements.txt
 
-python train.py                # GRU4Rec + full comparison (synthetic by default)
+python train.py                # neural net + all baselines (built-in demo data)
 python train.py --epochs 30    # train longer
 ```
 
-Swap in real interactions with `--data`:
+Use real data with `--data`:
 
 ```bash
 python train.py --data retailrocket --path events.csv      # RetailRocket (Kaggle)
 python train.py --data amazon --path Electronics.jsonl     # Amazon Reviews 2023
-python train.py --data csv --path interactions.csv         # any user/item/timestamp CSV
+python train.py --data csv --path interactions.csv         # any user/item/time CSV
 ```
 
-`data/loader.py` documents where to get each dataset and applies k-core
-filtering before splitting.
+`data/loader.py` lists where to download each dataset, and drops very rare items
+and very short sessions before testing.
 
 ## Repo structure
 
 ```
 seqrec/
-├── config.py            # all hyperparameters in one dataclass
-├── run_baselines.py     # fit + evaluate baselines
-├── train.py             # train GRU4Rec + full comparison
+├── config.py            # all settings in one place
+├── run_baselines.py     # run the simple methods only
+├── train.py             # train the neural net + run the full comparison
 ├── data/
-│   ├── synthetic.py     # out-of-the-box data generator
-│   └── loader.py        # Amazon / RetailRocket / CSV loaders + k-core
+│   ├── synthetic.py     # the built-in demo data generator
+│   └── loader.py        # loaders for RetailRocket / Amazon / any CSV
 └── src/
-    ├── dataset.py       # sequence building + leave-one-out split
-    ├── metrics.py       # Recall@K, NDCG@K, MRR + eval harness
+    ├── dataset.py       # builds sequences + the train/test split
+    ├── metrics.py       # the scoring (Recall, NDCG, MRR)
     ├── baselines/       # popularity, markov, item_knn
     └── models/gru4rec.py
 ```
 
-## A note on interpreting results
+## In short
 
-- On many real session datasets, well-tuned simple baselines (session kNN, Markov) are surprisingly competitive with neural models — a documented finding in the recommender-systems literature.
-- If that turns out to be the case here, it's a legitimate, sophisticated result, not a failure.
-- *"The baseline came within 2% at a fraction of the cost"* is a stronger portfolio signal than an unexamined claim that the neural model won.
+- A fair contest between a neural recommender and simple baselines.
+- On real data, the simple method wins; on data with deeper patterns, the neural net wins.
+- The real takeaway: **match the model to the data — complexity has to earn its place.**
 
-## Possible extensions
+## Possible next steps
 
-- Add a self-attention model (SASRec) to the comparison table.
-- Wrap the trained model in a FastAPI `/recommend` endpoint + Dockerfile for a live demo.
-- Sampled-negative training loss for faster, more scalable optimization.
+- Add another neural model (SASRec) to the comparison.
+- Turn the trained model into a live API: send it a session, get recommendations back.
+- Speed up training for very large catalogs.
