@@ -11,7 +11,7 @@ view…"*.
 ## TL;DR
 
 - A fair **baseline-vs-model comparison** for next-item recommendation — four methods, identical split, identical metrics.
-- On real e-commerce data (RetailRocket: 45K items, 2.7M interactions), GRU4Rec reaches **Recall@10 ≈ 0.46, NDCG@10 ≈ 0.36** after 10 epochs, with no train/test gap.
+- On real e-commerce data (RetailRocket: 45K items, 2.7M interactions), GRU4Rec reaches **Recall@10 ≈ 0.50, NDCG@10 ≈ 0.38** (converged after 30 epochs), with no train/test gap.
 - The point isn't "the neural net won" — it's a rigorous table plus a clear explanation of *why* the numbers land where they do.
 
 ## Methods compared
@@ -34,7 +34,7 @@ Leave-one-out test set, evaluated on a 5,000-instance sample.
 | Popularity | _pending_  | _pending_  | _pending_  |
 | Markov(1)  | _pending_  | _pending_  | _pending_  |
 | ItemKNN    | _pending_  | _pending_  | _pending_  |
-| GRU4Rec    | **0.4636** | **0.3635** | **0.3361** |
+| GRU4Rec    | **0.4992** | **0.3789** | **0.3461** |
 
 > **TODO before sharing:** fill the three baseline rows by running
 > `python train.py --data retailrocket --path events.csv`, then add one line of
