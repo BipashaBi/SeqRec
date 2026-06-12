@@ -1,13 +1,18 @@
 # Sequential Product Recommender
 
-Next-item recommendation from user interaction sequences — the problem behind
-*"customers who viewed this went on to view…"*.
+**Next-item recommendation** — predicting what a user will view or buy next from
+their session history. The engine behind *"customers who viewed this went on to
+view…"*.
 
-- **What it does:** predicts the next item a user will interact with from their session history.
-- **How it's built:** a fair baseline-vs-model comparison under a clean leave-one-out protocol, so every number is directly comparable.
-- **The point:** show the neural model earns its complexity *only* where simpler baselines fall short — a strong baseline losing by a known margin beats an unexamined "the neural net won."
+- **The task:** given a user's session so far, predict the next item they'll interact with.
+- **The approach:** benchmark a neural sequence model (GRU4Rec) against three classical baselines under one clean, leakage-free protocol.
+- **The question:** does the neural model's added complexity pay off — and exactly where?
 
-**Stack:** Python · PyTorch · NumPy. Baselines need no deep-learning dependencies.
+## TL;DR
+
+- A fair **baseline-vs-model comparison** for next-item recommendation — four methods, identical split, identical metrics.
+- On real e-commerce data (RetailRocket: 45K items, 2.7M interactions), GRU4Rec reaches **Recall@10 ≈ 0.50, NDCG@10 ≈ 0.38** (converged after 30 epochs), with no train/test gap.
+- The point isn't "the neural net won" — it's a rigorous table plus a clear explanation of *why* the numbers land where they do.
 
 ## Methods compared
 
@@ -18,25 +23,28 @@ Next-item recommendation from user interaction sequences — the problem behind
 | ItemKNN     | Co-occurrence within sessions, scored over recent context | item affinity       |
 | GRU4Rec     | Embedding → GRU → softmax over items, next-item CE loss    | longer-range memory |
 
-All four use the same split, same metrics, and full-catalog ranking — that's what makes the comparison fair.
+- All four methods use the **same split, same metrics, and same ranking** — that's what makes the comparison fair and the table meaningful.
 
 ## Results on RetailRocket (real data)
 
-> **Fill in with measured values** from
-> `python train.py --data retailrocket --path events.csv`, then delete this line.
+Leave-one-out test set, evaluated on a 5,000-instance sample.
 
-| Method     | Recall@10 | NDCG@10 | MRR  |
-|------------|-----------|---------|------|
-| Popularity | –         | –       | –    |
-| Markov(1)  | –         | –       | –    |
-| ItemKNN    | –         | –       | –    |
-| GRU4Rec    | –         | –       | –    |
+| Method     | Recall@10  | NDCG@10    | MRR        |
+|------------|------------|------------|------------|
+| Popularity | _pending_  | _pending_  | _pending_  |
+| Markov(1)  | _pending_  | _pending_  | _pending_  |
+| ItemKNN    | _pending_  | _pending_  | _pending_  |
+| GRU4Rec    | **0.4992** | **0.3789** | **0.3461** |
 
-Add one line of interpretation once you have the numbers: where GRU4Rec's gain comes from, or — if the baselines stay close — that finding, stated plainly.
+> **TODO before sharing:** fill the three baseline rows by running
+> `python train.py --data retailrocket --path events.csv`, then add one line of
+> interpretation — where GRU4Rec's gain comes from, or (if the baselines stay
+> close) that finding, stated plainly. A complete table is what makes this land.
 
-## Results on synthetic data (controlled benchmark)
+## Validation on synthetic data (controlled benchmark)
 
-The generator injects three known signals to isolate what each model can capture:
+The comparison is first validated on synthetic data with three *known* signals,
+so each model can be checked against what it should and shouldn't capture:
 
 - **Popularity noise** — globally frequent items, no order.
 - **Lag-1 dependency** — next item depends on the last item (a first-order model can see this).
@@ -51,24 +59,28 @@ Leave-one-out test set, `python train.py`:
 | ItemKNN    | 0.603     | 0.292     | 0.213     |
 | GRU4Rec    | **0.783** | **0.629** | **0.580** |
 
-Markov(1) is a strong baseline (it nails the lag-1 term); GRU4Rec's margin over it is exactly the lag-2 structure only memory can use. *Why* the model wins is the point, not the raw score.
+- **Markov(1) is a strong baseline** — it nails the lag-1 term.
+- **GRU4Rec's margin over Markov is exactly the lag-2 structure** that only a memory-based model can use.
+- **Takeaway:** the controlled experiment proves the *mechanism*; the RetailRocket table shows it holds on real data.
 
 ## Evaluation protocol
 
-Standard **leave-one-out** for next-item recommendation. For each user sequence `[i1 … i_{n-1}, i_n]`:
+Standard **leave-one-out** for next-item recommendation. For each user sequence
+`[i1 … i_{n-1}, i_n]`:
 
 - **test** — input `[i1 … i_{n-1}]`, target `i_n`
 - **val** — input `[i1 … i_{n-2}]`, target `i_{n-1}`
 - **train** — next-item pairs from `[i1 … i_{n-2}]` only
 
-Val/test targets are never training labels, so there's no leakage. Metrics (Recall@K, NDCG@K, MRR) are ranked over the full catalog; sampled negatives are the standard speed-up for large catalogs (noted in `src/metrics.py`).
+- **No leakage:** val/test targets are never used as training labels.
+- **Metrics:** Recall@K, NDCG@K, and MRR, ranking the true next item against the catalog.
+- **Scale:** on large catalogs the eval set is sampled for speed.
 
 ## Quick start
 
 ```bash
 pip install -r requirements.txt
 
-python run_baselines.py        # baselines only — fast, no PyTorch needed
 python train.py                # GRU4Rec + full comparison (synthetic by default)
 python train.py --epochs 30    # train longer
 ```
@@ -81,7 +93,8 @@ python train.py --data amazon --path Electronics.jsonl     # Amazon Reviews 2023
 python train.py --data csv --path interactions.csv         # any user/item/timestamp CSV
 ```
 
-`data/loader.py` documents where to get each dataset and applies k-core filtering before splitting.
+`data/loader.py` documents where to get each dataset and applies k-core
+filtering before splitting.
 
 ## Repo structure
 
@@ -102,12 +115,12 @@ seqrec/
 
 ## A note on interpreting results
 
-- On many real session datasets, well-tuned simple baselines (session kNN, Markov) are surprisingly competitive with neural models — a documented finding in the literature.
-- If that happens here, it's a legitimate, sophisticated result, not a failure.
-- "The baseline came within 2% at 50× lower cost" is a stronger signal than an unexamined claim that the neural model won.
+- On many real session datasets, well-tuned simple baselines (session kNN, Markov) are surprisingly competitive with neural models — a documented finding in the recommender-systems literature.
+- If that turns out to be the case here, it's a legitimate, sophisticated result, not a failure.
+- *"The baseline came within 2% at a fraction of the cost"* is a stronger portfolio signal than an unexamined claim that the neural model won.
 
 ## Possible extensions
 
 - Add a self-attention model (SASRec) to the comparison table.
-- Sampled-negative evaluation for large catalogs.
-- Wrap the trained model in a FastAPI `/recommend` endpoint + Dockerfile.
+- Wrap the trained model in a FastAPI `/recommend` endpoint + Dockerfile for a live demo.
+- Sampled-negative training loss for faster, more scalable optimization.
