@@ -74,9 +74,12 @@ def load_dataframe(args):
 def run_baselines(ds):
     results = {}
     for m in (PopularityRecommender(), MarkovRecommender(), ItemKNNRecommender()):
+        print(f"  fitting {m.name}...", flush=True)
+        t0 = time.time()
         m.fit(ds.train_sequences, ds.n_items)
         results[m.name] = evaluate(m.score, ds.test_data, ds.n_items,
                                    CONFIG.k_list, CONFIG.exclude_seen)
+        print(f"  {m.name} done in {time.time() - t0:.1f}s", flush=True)
     return results
 
 
@@ -142,6 +145,8 @@ def main():
     p.add_argument("--epochs", type=int, default=CONFIG.epochs)
     p.add_argument("--eval_sample", type=int, default=5000,
                    help="evaluate on this many sampled instances (0 = full set)")
+    p.add_argument("--skip_baselines", action="store_true",
+                   help="train GRU4Rec only (skip the CPU baselines)")
     args = p.parse_args()
 
     set_seed(CONFIG.seed)
@@ -155,10 +160,13 @@ def main():
           f"| val={len(ds.val_data)} | test={len(ds.test_data)} "
           f"| device={CONFIG.device} | eval_sample={args.eval_sample}\n")
 
-    print("Running baselines...")
-    t0 = time.time()
-    baseline_results = run_baselines(ds)
-    print(f"baselines done in {time.time() - t0:.1f}s\n")
+    if args.skip_baselines:
+        baseline_results = {}
+    else:
+        print("Running baselines...")
+        t0 = time.time()
+        baseline_results = run_baselines(ds)
+        print(f"baselines done in {time.time() - t0:.1f}s\n")
 
     print("Training GRU4Rec...")
     model = train_gru(ds, CONFIG, args.epochs)
