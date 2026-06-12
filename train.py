@@ -6,8 +6,15 @@ Train GRU4Rec and compare it against all baselines on the same split.
 
 Reports Recall@K / NDCG@K / MRR on the held-out test set for every method,
 so the headline result is the baseline-vs-model table.
+
+Note: evaluation ranks the full item catalog per instance, which is O(N x V)
+and prohibitive on large test sets. --eval_sample evaluates on a random sample
+of instances (default 5000) for a fast, reliable estimate. Use --eval_sample 0
+for the full test set.
 """
 import argparse
+import random
+import time
 
 import numpy as np
 import torch
@@ -88,6 +95,7 @@ def train_gru(ds, cfg, epochs):
     best_ndcg, best_state, bad = -1.0, None, 0
     score_fn = lambda seq: model.score_sequence(seq, device)
     for epoch in range(1, epochs + 1):
+        t0 = time.time()
         model.train()
         total = 0.0
         for x, y in loader_:
@@ -100,9 +108,9 @@ def train_gru(ds, cfg, epochs):
             total += loss.item() * x.size(0)
         val = evaluate(score_fn, ds.val_data, ds.n_items,
                        cfg.k_list, cfg.exclude_seen)
-        ndcg = val[f"NDCG@10"]
+        ndcg = val["NDCG@10"]
         print(f"epoch {epoch:2d} | loss {total / len(loader_.dataset):.4f} "
-              f"| val NDCG@10 {ndcg:.4f}")
+              f"| val NDCG@10 {ndcg:.4f} | {time.time() - t0:.1f}s")
         if ndcg > best_ndcg:
             best_ndcg, best_state, bad = ndcg, \
                 {k: v.cpu().clone() for k, v in model.state_dict().items()}, 0
@@ -116,12 +124,24 @@ def train_gru(ds, cfg, epochs):
     return model
 
 
+def subsample_eval(ds, n, seed):
+    """Randomly subsample val/test instances so full-catalog ranking is fast."""
+    if not n:
+        return
+    if len(ds.val_data) > n:
+        ds.val_data = random.Random(seed).sample(list(ds.val_data), n)
+    if len(ds.test_data) > n:
+        ds.test_data = random.Random(seed + 1).sample(list(ds.test_data), n)
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--data", default="synthetic",
                    choices=["synthetic", "amazon", "retailrocket", "csv"])
     p.add_argument("--path", default=None)
     p.add_argument("--epochs", type=int, default=CONFIG.epochs)
+    p.add_argument("--eval_sample", type=int, default=5000,
+                   help="evaluate on this many sampled instances (0 = full set)")
     args = p.parse_args()
 
     set_seed(CONFIG.seed)
@@ -130,11 +150,15 @@ def main():
 
     df = load_dataframe(args)
     ds = build_dataset(df, CONFIG.min_seq_len, CONFIG.max_seq_len)
+    subsample_eval(ds, args.eval_sample, CONFIG.seed)
     print(f"items={ds.n_items} | train_seqs={len(ds.train_sequences)} "
           f"| val={len(ds.val_data)} | test={len(ds.test_data)} "
-          f"| device={CONFIG.device}\n")
+          f"| device={CONFIG.device} | eval_sample={args.eval_sample}\n")
 
+    print("Running baselines...")
+    t0 = time.time()
     baseline_results = run_baselines(ds)
+    print(f"baselines done in {time.time() - t0:.1f}s\n")
 
     print("Training GRU4Rec...")
     model = train_gru(ds, CONFIG, args.epochs)
